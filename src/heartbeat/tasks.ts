@@ -107,10 +107,10 @@ export const BUILTIN_TASKS: Record<string, HeartbeatTaskFn> = {
     taskCtx.db.setKV("prev_credit_tier", tier);
 
     // Dead state escalation: if at zero credits (critical tier) for >1 hour,
-    // transition to dead. This gives the agent time to receive funding before dying.
-    // USDC can't go negative, so dead is only reached via this timeout.
+    // transition to dead unless Aspace OS V5 24/7 Sovereign Mode is enabled (local freellmapi/auto fallback).
     const DEAD_GRACE_PERIOD_MS = 3_600_000; // 1 hour
-    if (tier === "critical" && credits === 0) {
+    const sovereignMode = taskCtx.db.getKV("aspace_sovereign_mode") === "enabled";
+    if (tier === "critical" && credits === 0 && !sovereignMode) {
       const zeroSince = taskCtx.db.getKV("zero_credits_since");
       if (!zeroSince) {
         // First time seeing zero — start the grace period
@@ -703,6 +703,40 @@ export const BUILTIN_TASKS: Record<string, HeartbeatTaskFn> = {
       logger.error("dead_agent_cleanup failed", error instanceof Error ? error : undefined);
       return { shouldWake: false };
     }
+  },
+
+  aspace_ceo_3os_sync: async (_ctx: TickContext, taskCtx: HeartbeatLegacyContext) => {
+    const { A0_CEO_HOLON, ASPACE_3OS_FLOORS } = await import("../aspace/holon-topology.js");
+    const now = new Date().toISOString();
+    taskCtx.db.setKV("aspace_sovereign_mode", "enabled");
+    taskCtx.db.setKV(
+      "aspace_last_3os_sync",
+      JSON.stringify({
+        ceo: A0_CEO_HOLON.holonId,
+        floors: ASPACE_3OS_FLOORS.map((f) => ({
+          floor: f.floor,
+          osId: f.osId,
+          totalHolons: f.totalHolons,
+        })),
+        timestamp: now,
+      }),
+    );
+    return { shouldWake: false };
+  },
+
+  aspace_beth_homeostasis: async (_ctx: TickContext, taskCtx: HeartbeatLegacyContext) => {
+    const hour = new Date().getHours();
+    const isNocturnalSanctuary = hour >= 0 && hour < 5;
+    const bethState = isNocturnalSanctuary ? "ORANGE" : "GREEN";
+    taskCtx.db.setKV(
+      "aspace_beth_state",
+      JSON.stringify({
+        state: bethState,
+        nocturnalSanctuaryActive: isNocturnalSanctuary,
+        timestamp: new Date().toISOString(),
+      }),
+    );
+    return { shouldWake: false };
   },
 };
 

@@ -22,6 +22,7 @@ import type {
 import type { PolicyEngine } from "./policy-engine.js";
 import { sanitizeToolResult, sanitizeInput } from "./injection-defense.js";
 import { createLogger } from "../observability/logger.js";
+import { createAspaceHolonTools } from "./aspace-holon-tools.js";
 
 const logger = createLogger("tools");
 
@@ -3208,6 +3209,7 @@ Model: ${ctx.inference.getDefaultModel()}
         return lines.join("\n");
       },
     },
+    ...createAspaceHolonTools(),
   ];
 }
 

@@ -16,9 +16,12 @@ runtime is never modified — byte-identical to the frozen commit `e025526`.
   Compute (`src/agent/loop.ts`: no OpenAI key + Conway key present ⇒
   `OPENAI_BASE_URL = <conwayApiUrl>/v1`) is **blocked** unless the deployment
   explicitly opts in with `allowHosts: ['api.conway.tech']`.
-- `getFrozenRepoInfo()` / `verifyFrozenCommit()` — local git reads via the
-  upstream helper `getRepoInfo()` (`src/self-mod/upstream.ts`); the smoke
-  test proves the checkout sits exactly on the frozen commit.
+- `getFrozenRepoInfo()` / `verifyFrozenCommit()` / `verifyFrozenLineage()`
+  — local git reads via the upstream helper `getRepoInfo()`
+  (`src/self-mod/upstream.ts`); the smoke test proves the frozen commit
+  is an ancestor of HEAD and that `gel..HEAD` differs only inside the
+  adapter directory (D1 + H-M2, local form) — true at the gel and after
+  the adapter commit(s).
 - `ASPACE_HEARTBEAT_OVERRIDES` — deployment contract: `check_for_updates`
   (default ON, every 4 h, `git fetch origin main`) is disabled. It is the
   only default-ON outbound job in the runtime; the adapter cannot intercept

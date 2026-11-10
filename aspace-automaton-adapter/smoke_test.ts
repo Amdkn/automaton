@@ -17,6 +17,7 @@ import {
   installOutboundGuard,
   isOutboundAllowed,
   verifyFrozenCommit,
+  verifyFrozenLineage,
 } from './src/index.js'
 
 let passed = 0
@@ -55,12 +56,24 @@ async function main(): Promise<void> {
   )
   check('telemetry blocklist non-empty', TELEMETRY_BLOCKLIST.length >= 10)
 
-  // 2. Checkout sits exactly on the frozen commit (D1, live proof).
-  const frozen = verifyFrozenCommit()
+  // 2. Lineage: the gel is an ancestor of HEAD and the only files that
+  // differ from the gel live inside the adapter dir (D1 + H-M2, local
+  // form). True at the gel (ahead 0) and after the adapter commit(s).
+  const lineage = verifyFrozenLineage()
   check(
-    'checkout HEAD == frozen commit',
-    frozen.ok,
-    `HEAD=${frozen.head}`,
+    'frozen commit is an ancestor of HEAD',
+    lineage.gelAncestor,
+    `HEAD=${lineage.headFull}`,
+  )
+  check(
+    'gel..HEAD differs only inside aspace-automaton-adapter/',
+    lineage.nonAdapterFiles.length === 0,
+    `non-adapter files: ${lineage.nonAdapterFiles.join(', ')}`,
+  )
+  check(
+    'checkout is exactly the gel or the gel + adapter commit(s)',
+    lineage.ahead >= 0,
+    `ahead=${lineage.ahead}`,
   )
 
   // 3. Pure policy: loopback allowed, everything else denied by default.

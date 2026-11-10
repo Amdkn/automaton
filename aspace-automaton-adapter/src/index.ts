@@ -39,6 +39,7 @@
  *   no OpenAI key + Conway key present => `OPENAI_BASE_URL =
  *   <conwayApiUrl>/v1`) is BLOCKED unless the deployment explicitly opts in.
  */
+import { execFileSync } from 'node:child_process'
 import { getRepoInfo } from '../../src/self-mod/upstream.js'
 
 /** Adapter version (semver of the adapted module, D4). */
@@ -198,6 +199,74 @@ export function verifyFrozenCommit(): { ok: boolean; head: string } {
   return { ok, head: info.headHash }
 }
 
+function git(args: string[]): string {
+  return execFileSync('git', args, {
+    cwd: process.cwd(),
+    encoding: 'utf-8',
+    timeout: 15_000,
+  }).trim()
+}
+
+/**
+ * Lineage check (D1 + H-M2, local form): the frozen commit is an ancestor
+ * of HEAD, and every file that differs between the gel and HEAD lives
+ * inside `aspace-automaton-adapter/`. True both at the gel (ahead 0, no
+ * diff) and after the adapter commit(s) (ahead >= 1, adapter files only).
+ * Any upstream file in the diff fails the check.
+ */
+export function verifyFrozenLineage(): {
+  ok: boolean
+  head: string
+  headFull: string
+  gelAncestor: boolean
+  ahead: number
+  nonAdapterFiles: string[]
+} {
+  const info = getRepoInfo()
+  const headFull = git(['rev-parse', 'HEAD'])
+  let gelAncestor = false
+  try {
+    execFileSync(
+      'git',
+      ['merge-base', '--is-ancestor', PINNED_AUTOMATON_COMMIT_FULL, 'HEAD'],
+      { cwd: process.cwd(), timeout: 15_000 },
+    )
+    gelAncestor = true
+  } catch {
+    gelAncestor = false
+  }
+  let ahead = -1
+  try {
+    ahead = Number(
+      git(['rev-list', '--count', `${PINNED_AUTOMATON_COMMIT_FULL}..HEAD`]),
+    )
+  } catch {
+    ahead = -1
+  }
+  let nonAdapterFiles: string[] = []
+  try {
+    const diff = git([
+      'diff',
+      '--name-only',
+      `${PINNED_AUTOMATON_COMMIT_FULL}..HEAD`,
+    ])
+    nonAdapterFiles = diff
+      .split('\n')
+      .map((f) => f.trim())
+      .filter((f) => f.length > 0 && !f.startsWith('aspace-automaton-adapter/'))
+  } catch {
+    nonAdapterFiles = ['<git diff failed>']
+  }
+  return {
+    ok: gelAncestor && ahead >= 0 && nonAdapterFiles.length === 0,
+    head: info.headHash,
+    headFull,
+    gelAncestor,
+    ahead,
+    nonAdapterFiles,
+  }
+}
+
 export default {
   ADAPTER_VERSION,
   PINNED_AUTOMATON_COMMIT,
@@ -210,4 +279,5 @@ export default {
   installOutboundGuard,
   getFrozenRepoInfo,
   verifyFrozenCommit,
+  verifyFrozenLineage,
 }
